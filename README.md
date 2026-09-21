@@ -7,6 +7,12 @@ building movie search for a fictional app called cMovie.
 The series publishes on [8567.me](https://8567.me). This repo holds the data
 loader and the application code each week builds on.
 
+## Setup
+
+Start with the [setup page](docs/setup.md). It covers creating an Astra DB
+database, generating a token, downloading the secure connect bundle, getting a
+Google AI Studio key and running the loader.
+
 ## Status
 
 Early. The repo exists so the loader's Wikimedia User-Agent has a contact URL to

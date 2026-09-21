@@ -19,7 +19,7 @@ has the setup instructions for your system.
    Packages](https://docs.python.org/3/tutorial/venv.html) in the Python docs
    for how to create and activate one.
 2. **A free GitHub account.** See [Creating an account on
-   GitHub](https://docs.github.com/en/get-started/start-your-journey/creating-an-account-on-github).
+   GitHub](https://docs.github.com/en/account-and-profile/how-tos/account-management/creating-an-account-on-github).
 3. **The git command line tool.** See [Installing
    Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
 

@@ -1,8 +1,8 @@
 # cassandra-5-movie-search
 
 Companion code for a ten week developer series on Apache Cassandra® 5.0: storage
-attached indexing (SAI), vector search and the new CQL functions, taught by
-building movie search for a fictional app called cMovie.
+attached indexing (SAI) and vector search, taught by building movie search for
+a fictional app called cMovie.
 
 The series publishes on [8567.me](https://8567.me). This repo holds the data
 loader and the application code each week builds on.

@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Astra DB secure connect bundle. Holds credentials for your database, never commit it
+secure-connect-*.zip
+
+# macOS Finder metadata
+.DS_Store

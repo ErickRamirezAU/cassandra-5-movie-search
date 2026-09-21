@@ -58,10 +58,11 @@ noted above.
 
 ## Disclosure
 
-> I'm a Developer Advocate at DataStax, now an IBM company, and I wrote this
-> series as part of that role. It runs on Astra DB, a DataStax product, so the
-> setup stays out of your way. Everything it teaches is an Apache Cassandra 5.0
-> feature you can also run on open source Cassandra.
+> This series is based on new features in Apache Cassandra® 5.0 but the
+> tutorials are run on DataStax Astra DB to make it simpler for developers to
+> build apps without having to worry about installing/configuring a cluster. For
+> full disclosure, I'm an Apache Cassandra committer and a Developer Advocate at
+> DataStax, now an IBM company.
 
 Apache Cassandra, Cassandra, Apache, the Apache logo, and the Apache Cassandra
 project logo are either registered trademarks or trademarks of The Apache

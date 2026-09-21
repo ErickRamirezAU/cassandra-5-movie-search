@@ -49,6 +49,7 @@ import os
 import random
 import re
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -74,6 +75,7 @@ DEFAULT_SCB_PATH = PROJECT_DIR / "secure-connect-cmovies.zip"
 FILMS_PER_DECADE_DEFAULT = 250
 CANDIDATES_PER_DECADE_DEFAULT = 400  # default candidate pool size per decade
 SITELINKS_THRESHOLD_DEFAULT = 15
+PROGRESS_INTERVAL_DEFAULT = 60
 
 # Deleted outright, not replaced with a space. Includes the en/em dash
 # Wikipedia titles use ("John Wick: Chapter 3 – Parabellum"), not just the
@@ -270,6 +272,14 @@ def build_record(qid: str, release_year: int, enrichment: dict) -> MovieRecord |
     )
 
 
+def _print_heartbeat(name: str, target: int, walked: int, total: int, accepted: int, skipped: int, elapsed: float) -> None:
+    print(
+        f"  ...[{elapsed:.0f}s] {name}: walked {walked}/{total} candidates, "
+        f"{accepted}/{target} accepted, {skipped} skipped",
+        flush=True,
+    )
+
+
 def select_decade(
     name: str,
     start_year: int,
@@ -277,6 +287,7 @@ def select_decade(
     target: int,
     pool_size: int,
     sitelinks_threshold: int,
+    progress_interval: int,
 ) -> DecadeResult:
     result = DecadeResult(name=name)
 
@@ -297,16 +308,34 @@ def select_decade(
     print(f"  enriching {len(verified)} candidate(s) with runtime, genre, enwiki title...")
     enrichment = enrich_candidates([qid for qid, _year in verified])
 
-    for qid, release_year in verified:
-        if len(result.accepted) >= target:
-            break
-        record = build_record(qid, release_year, enrichment.get(qid, {"runtimes": [], "genres": [], "enwiki_title": None}))
-        if record is None:
-            result.skipped_qids.append(qid)
-            continue
-        result.accepted.append(record)
-        if len(result.accepted) % 25 == 0:
-            print(f"  ...{len(result.accepted)}/{target} accepted ({len(result.skipped_qids)} skipped so far)")
+    # A background timer, not an inline elapsed-time check in the loop below,
+    # so a heartbeat still fires on schedule even if a single Wikimedia
+    # request in build_record() hangs rather than erroring out quickly.
+    walked = 0
+    start = time.monotonic()
+    stop_heartbeat = threading.Event()
+
+    def heartbeat() -> None:
+        while not stop_heartbeat.wait(progress_interval):
+            _print_heartbeat(name, target, walked, len(verified), len(result.accepted), len(result.skipped_qids), time.monotonic() - start)
+
+    heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
+    heartbeat_thread.start()
+    try:
+        for qid, release_year in verified:
+            walked += 1
+            if len(result.accepted) >= target:
+                break
+            record = build_record(qid, release_year, enrichment.get(qid, {"runtimes": [], "genres": [], "enwiki_title": None}))
+            if record is None:
+                result.skipped_qids.append(qid)
+                continue
+            result.accepted.append(record)
+            if len(result.accepted) % 25 == 0:
+                print(f"  ...{len(result.accepted)}/{target} accepted ({len(result.skipped_qids)} skipped so far)", flush=True)
+    finally:
+        stop_heartbeat.set()
+        heartbeat_thread.join()
 
     if len(result.accepted) < target:
         print(
@@ -514,6 +543,7 @@ def main() -> None:
     parser.add_argument("--films-per-decade", type=int, default=FILMS_PER_DECADE_DEFAULT)
     parser.add_argument("--candidates-per-decade", type=int, default=CANDIDATES_PER_DECADE_DEFAULT)
     parser.add_argument("--sitelinks-threshold", type=int, default=SITELINKS_THRESHOLD_DEFAULT)
+    parser.add_argument("--progress-interval", type=int, default=PROGRESS_INTERVAL_DEFAULT, help="Seconds between progress updates while enriching candidates (default: 60)")
     parser.add_argument("--decade", action="append", choices=[d[0] for d in DECADES], help="Restrict to one or more decades (repeatable). Default: all four")
     parser.add_argument("--env-file", default=str(DEFAULT_ENV_PATH))
     parser.add_argument("--scb", default=None, help=f"Path to the Secure Connect Bundle (default: {DEFAULT_SCB_PATH})")
@@ -537,6 +567,7 @@ def main() -> None:
         result = select_decade(
             name, start_year, end_year,
             args.films_per_decade, args.candidates_per_decade, args.sitelinks_threshold,
+            args.progress_interval,
         )
         all_records.extend(result.accepted)
         all_skipped[name] = result.skipped_qids

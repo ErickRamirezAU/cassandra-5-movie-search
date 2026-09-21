@@ -1,6 +1,6 @@
 # cassandra-5-movie-search
 
-Companion code for a ten week developer series on Apache Cassandra 5.0: storage
+Companion code for a ten week developer series on Apache Cassandra® 5.0: storage
 attached indexing (SAI), vector search and the new CQL functions, taught by
 building movie search for a fictional app called cMovie.
 
@@ -17,6 +17,15 @@ Google AI Studio key and running the loader.
 
 Early. The repo exists so the loader's Wikimedia User-Agent has a contact URL to
 point at. Code lands week by week as the series publishes.
+
+## Repository layout
+
+| Path | What it holds |
+| --- | --- |
+| `docs/setup.md` | The reader setup page, linked from every post |
+| `tools/` | The data loader (`loader.py`) and the Wikidata and Wikipedia module it imports. Run from the repo root as `python tools/loader.py` |
+| `tutorials/week-NN/` | Each week's CQL files and a short README. Weeks land as the series publishes, starting with `tutorials/week-01/` |
+| `.env.example`, `requirements.txt` | Shared by every week. Your own `.env` and the secure connect bundle also live in the repo root |
 
 ## What the series teaches
 
@@ -53,3 +62,7 @@ noted above.
 > series as part of that role. It runs on Astra DB, a DataStax product, so the
 > setup stays out of your way. Everything it teaches is an Apache Cassandra 5.0
 > feature you can also run on open source Cassandra.
+
+Apache Cassandra, Cassandra, Apache, the Apache logo, and the Apache Cassandra
+project logo are either registered trademarks or trademarks of The Apache
+Software Foundation in the United States and other countries.

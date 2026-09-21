@@ -31,13 +31,13 @@ script:
   if one isn't set.
 
 Requires cassandra-driver (PyPI wheels cover CPython 3.10-3.14).
-Run from a virtual environment:
+Run from the repo's root directory, in a virtual environment:
 
-    ./.venv/bin/python loader.py --dry-run --films-per-decade 5
+    ./.venv/bin/python tools/loader.py --dry-run --films-per-decade 5
 
 Drop --dry-run for a real load:
 
-    ./.venv/bin/python loader.py --films-per-decade 250
+    ./.venv/bin/python tools/loader.py --films-per-decade 250
 """
 
 from __future__ import annotations
@@ -54,8 +54,9 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(PROJECT_DIR))
+TOOLS_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = TOOLS_DIR.parent
+sys.path.insert(0, str(TOOLS_DIR))
 
 from probe_wikidata_wikipedia import (  # noqa: E402
     DECADES,

@@ -5,7 +5,7 @@ then come back to whichever week sent you.
 
 > I'm a Developer Advocate at DataStax, now an IBM company, and I wrote this
 > series as part of that role. It runs on Astra DB, a DataStax product, so the
-> setup stays out of your way. Everything it teaches is an Apache Cassandra 5.0
+> setup stays out of your way. Everything it teaches is an Apache Cassandra® 5.0
 > feature you can also run on open source Cassandra.
 
 ## Prerequisites
@@ -161,8 +161,8 @@ expect them to differ from anyone else's.
 ### 4.1 Create the `.env` file from the example
 
 The loader reads your token from a file called `.env` in the root directory of
-your clone of the series repo, next to `loader.py`. The repo includes a sample,
-`.env.example`, so you only fill in the blanks.
+your clone of the series repo, next to `.env.example`. That sample file is
+included in the repo, so you only fill in the blanks.
 
 1. In the root directory of the clone, copy `.env.example` to a new file called
    `.env`.
@@ -192,7 +192,7 @@ created `.env`. It reads your token from `.env` and looks for
 `secure-connect-cmovies.zip` in the same directory:
 
 ```bash
-python loader.py
+python tools/loader.py
 ```
 
 If your bundle has a different name or location, pass its path with
@@ -213,7 +213,7 @@ What to expect:
   with `--progress-interval`, in seconds:
 
   ```bash
-  python loader.py --progress-interval 30
+  python tools/loader.py --progress-interval 30
   ```
 
 - It finishes with a line like `all 1000 rows inserted`. If any insert fails it
@@ -228,7 +228,7 @@ What to expect:
 If you'd rather try a smaller batch first, pass `--films-per-decade`:
 
 ```bash
-python loader.py --films-per-decade 5
+python tools/loader.py --films-per-decade 5
 ```
 
 ### 5.1 Check the load
@@ -254,3 +254,7 @@ The three `cmovie_` numbers are fictional, invented for the cMovie app. They
 are not real audience scores. They're seeded from each film's Wikidata ID, so
 everyone who loads the same film gets the same numbers and the results in each
 post match what you see.
+
+Apache Cassandra, Cassandra, Apache, the Apache logo, and the Apache Cassandra
+project logo are either registered trademarks or trademarks of The Apache
+Software Foundation in the United States and other countries.

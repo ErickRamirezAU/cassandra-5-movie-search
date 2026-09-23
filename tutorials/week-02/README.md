@@ -46,6 +46,6 @@ by the loader, not real audience scores.
 > full disclosure, I'm an Apache Cassandra committer and a Developer Advocate at
 > DataStax, now an IBM company.
 
-Apache Cassandra, Cassandra, Apache, the Apache logo, and the Apache Cassandra
+*Apache Cassandra, Cassandra, Apache, the Apache logo, and the Apache Cassandra
 project logo are either registered trademarks or trademarks of The Apache
-Software Foundation in the United States and other countries.
+Software Foundation in the United States and other countries.*

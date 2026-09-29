@@ -29,6 +29,12 @@ script:
   Cassandra cluster (set CASSANDRA_HOSTS in .env) if no Astra token is
   configured. Either backend defaults its keyspace to "default_keyspace"
   if one isn't set.
+- Connects before selecting films, and inserts them in batches of 25
+  (--batch-size) as they're accepted, so a run that fails partway keeps
+  every film it had already inserted.
+- Resumes by default: a film already in the `movies` table counts as
+  accepted without being fetched again, so re-running after a failure picks
+  up where the last run stopped. Pass --no-resume to rebuild every film.
 
 Requires cassandra-driver (PyPI wheels cover CPython 3.10-3.14).
 Run from the repo's root directory, in a virtual environment:
@@ -52,6 +58,7 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Callable
 
 TOOLS_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = TOOLS_DIR.parent
@@ -79,6 +86,7 @@ FILMS_PER_DECADE_DEFAULT = 250
 CANDIDATES_PER_DECADE_DEFAULT = 400  # default candidate pool size per decade
 SITELINKS_THRESHOLD_DEFAULT = 15
 PROGRESS_INTERVAL_DEFAULT = 60
+BATCH_SIZE_DEFAULT = 25
 
 # Deleted outright, not replaced with a space. Includes the en/em dash
 # Wikipedia titles use ("John Wick: Chapter 3 – Parabellum"), not just the
@@ -222,9 +230,16 @@ class MovieRecord:
 class DecadeResult:
     name: str
     accepted: list[MovieRecord] = field(default_factory=list)
+    # Films already in the table from an earlier run, kept rather than
+    # fetched again. They count towards the decade's target.
+    resumed_qids: list[str] = field(default_factory=list)
     skipped_qids: list[str] = field(default_factory=list)
     candidates_pulled: int = 0
     true_decade_verified: int = 0
+
+    @property
+    def filled(self) -> int:
+        return len(self.accepted) + len(self.resumed_qids)
 
 
 def build_record(qid: str, release_year: int, enrichment: dict) -> MovieRecord | None:
@@ -291,8 +306,13 @@ def select_decade(
     pool_size: int,
     sitelinks_threshold: int,
     progress_interval: int,
+    already_loaded: set[str] | None = None,
+    insert_batch: Callable[[list[MovieRecord]], None] | None = None,
+    batch_size: int = BATCH_SIZE_DEFAULT,
 ) -> DecadeResult:
     result = DecadeResult(name=name)
+    already_loaded = already_loaded or set()
+    pending: list[MovieRecord] = []
 
     print(f"  fetching up to {pool_size} candidates (sitelinks >= {sitelinks_threshold})...")
     candidates = fetch_decade_candidates(start_year, end_year, pool_size, sitelinks_threshold)
@@ -320,29 +340,42 @@ def select_decade(
 
     def heartbeat() -> None:
         while not stop_heartbeat.wait(progress_interval):
-            _print_heartbeat(name, target, walked, len(verified), len(result.accepted), len(result.skipped_qids), time.monotonic() - start)
+            _print_heartbeat(name, target, walked, len(verified), result.filled, len(result.skipped_qids), time.monotonic() - start)
 
     heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
     heartbeat_thread.start()
     try:
         for qid, release_year in verified:
             walked += 1
-            if len(result.accepted) >= target:
+            if result.filled >= target:
                 break
+            # Walking in rank order and counting a loaded film as accepted
+            # keeps the same selection a single uninterrupted run would make.
+            if qid in already_loaded:
+                result.resumed_qids.append(qid)
+                continue
             record = build_record(qid, release_year, enrichment.get(qid, {"runtimes": [], "genres": [], "enwiki_title": None}))
             if record is None:
                 result.skipped_qids.append(qid)
                 continue
             result.accepted.append(record)
-            if len(result.accepted) % 25 == 0:
-                print(f"  ...{len(result.accepted)}/{target} accepted ({len(result.skipped_qids)} skipped so far)", flush=True)
+            if result.filled % 25 == 0:
+                print(f"  ...{result.filled}/{target} accepted ({len(result.skipped_qids)} skipped so far)", flush=True)
+            if insert_batch is not None:
+                pending.append(record)
+                if len(pending) >= batch_size:
+                    insert_batch(pending)
+                    pending = []
     finally:
         stop_heartbeat.set()
         heartbeat_thread.join()
 
-    if len(result.accepted) < target:
+    if insert_batch is not None and pending:
+        insert_batch(pending)
+
+    if result.filled < target:
         print(
-            f"  ** only {len(result.accepted)}/{target} filled for {name} -- "
+            f"  ** only {result.filled}/{target} filled for {name} -- "
             f"{len(verified)} true-decade candidates were not enough spares. "
             f"Re-run with a larger --candidates-per-decade for this decade.",
             file=sys.stderr,
@@ -381,39 +414,55 @@ INSERT INTO movies (
 """
 
 
-def load_records(session, records: list[MovieRecord]) -> None:
-    from cassandra.concurrent import execute_concurrent_with_args
+class MovieInserter:
+    """Creates the `movies` table, then inserts records a batch at a time,
+    keeping running totals for the summary at the end of the run."""
 
-    session.execute(CREATE_MOVIES_TABLE)
-    insert_stmt = session.prepare(INSERT_MOVIE)
+    def __init__(self, session) -> None:
+        self.session = session
+        session.execute(CREATE_MOVIES_TABLE)
+        self.insert_stmt = session.prepare(INSERT_MOVIE)
+        self.inserted = 0
+        self.failed = 0
 
-    params = [
-        (
-            r.movie_id,
-            r.title,
-            r.release_year,
-            r.genres,
-            r.runtime,
-            r.cmovie_rating,
-            r.cmovie_votes,
-            r.cmovie_popularity,
-            r.plot,
-            r.actors,
-            r.actor_words,
-            r.title_words,
-        )
-        for r in records
-    ]
-    results = execute_concurrent_with_args(session, insert_stmt, params, concurrency=50, raise_on_first_error=False)
-    failed = 0
-    for (success, exc_or_result), record in zip(results, records):
-        if not success:
-            failed += 1
-            print(f"  ** insert failed for {record.movie_id} ({record.title}): {exc_or_result}", file=sys.stderr)
-    if failed:
-        print(f"  {failed}/{len(records)} inserts failed", file=sys.stderr)
-    else:
-        print(f"  all {len(records)} rows inserted")
+    def loaded_movie_ids(self) -> set[str]:
+        return {row.movie_id for row in self.session.execute("SELECT movie_id FROM movies")}
+
+    def insert_batch(self, records: list[MovieRecord]) -> None:
+        from cassandra.concurrent import execute_concurrent_with_args
+
+        params = [
+            (
+                r.movie_id,
+                r.title,
+                r.release_year,
+                r.genres,
+                r.runtime,
+                r.cmovie_rating,
+                r.cmovie_votes,
+                r.cmovie_popularity,
+                r.plot,
+                r.actors,
+                r.actor_words,
+                r.title_words,
+            )
+            for r in records
+        ]
+        results = execute_concurrent_with_args(self.session, self.insert_stmt, params, concurrency=50, raise_on_first_error=False)
+        for (success, exc_or_result), record in zip(results, records):
+            if success:
+                self.inserted += 1
+            else:
+                self.failed += 1
+                print(f"  ** insert failed for {record.movie_id} ({record.title}): {exc_or_result}", file=sys.stderr)
+        print(f"  ...inserted {len(records)} row(s), {self.inserted} this run", flush=True)
+
+    def print_summary(self) -> None:
+        total = self.inserted + self.failed
+        if self.failed:
+            print(f"  {self.failed}/{total} inserts failed", file=sys.stderr)
+        else:
+            print(f"  all {total} rows inserted")
 
 
 # ---------------------------------------------------------------------------
@@ -427,6 +476,8 @@ def main() -> None:
     parser.add_argument("--candidates-per-decade", type=int, default=CANDIDATES_PER_DECADE_DEFAULT)
     parser.add_argument("--sitelinks-threshold", type=int, default=SITELINKS_THRESHOLD_DEFAULT)
     parser.add_argument("--progress-interval", type=int, default=PROGRESS_INTERVAL_DEFAULT, help="Seconds between progress updates while enriching candidates (default: 60)")
+    parser.add_argument("--batch-size", type=int, default=BATCH_SIZE_DEFAULT, help="Insert accepted films in batches of this many (default: 25)")
+    parser.add_argument("--no-resume", action="store_true", help="Fetch and insert every film again, including films already in the table")
     parser.add_argument("--decade", action="append", choices=[d[0] for d in DECADES], help="Restrict to one or more decades (repeatable). Default: all four")
     parser.add_argument("--env-file", default=str(DEFAULT_ENV_PATH))
     parser.add_argument("--scb", default=None, help=f"Path to the Secure Connect Bundle (default: {DEFAULT_SCB_PATH})")
@@ -435,28 +486,61 @@ def main() -> None:
     parser.add_argument("--out-json", default=None, help="Also write the built records to this JSON file")
     args = parser.parse_args()
 
-    # Fail fast on a missing/misconfigured backend, before the (potentially
-    # multi-minute, network-bound) film selection below runs for nothing.
+    if args.batch_size < 1:
+        parser.error("--batch-size must be at least 1")
+
+    # Connect before the (potentially multi-minute, network-bound) film
+    # selection below, so a missing or wrong token or bundle fails straight
+    # away, and so films can be inserted in batches as they're accepted.
     # Skipped for --dry-run, which is meant to work with no DB config at all.
-    cfg = None if args.dry_run else build_config(args.env_file, args.scb, args.keyspace)
+    cluster = None
+    inserter = None
+    already_loaded: set[str] = set()
+    if not args.dry_run:
+        cfg = build_config(args.env_file, args.scb, args.keyspace)
+        if cfg["backend"] == "astra":
+            print(f"Connecting to Astra keyspace '{cfg['keyspace']}' via {cfg['scb_path'].name}...")
+        else:
+            host_list = ", ".join(f"{h}:{p}" for h, p in cfg["hosts"])
+            print(f"Connecting to keyspace '{cfg['keyspace']}' on {host_list}...")
+        cluster, session = connect(cfg, create_keyspace=True)
+        inserter = MovieInserter(session)
+        if not args.no_resume:
+            already_loaded = inserter.loaded_movie_ids()
+            if already_loaded:
+                print(f"{len(already_loaded)} film(s) already in the table will be kept, not fetched again (--no-resume to rebuild them)")
 
     decades = [d for d in DECADES if not args.decade or d[0] in args.decade]
 
     all_records: list[MovieRecord] = []
+    all_resumed = 0
     all_skipped: dict[str, list[str]] = {}
 
-    for name, start_year, end_year in decades:
-        print(f"\n=== {name} ({start_year}-{end_year}) ===")
-        result = select_decade(
-            name, start_year, end_year,
-            args.films_per_decade, args.candidates_per_decade, args.sitelinks_threshold,
-            args.progress_interval,
-        )
-        all_records.extend(result.accepted)
-        all_skipped[name] = result.skipped_qids
-        print(f"  {name}: {len(result.accepted)} accepted, {len(result.skipped_qids)} skipped for a missing field")
+    try:
+        for name, start_year, end_year in decades:
+            print(f"\n=== {name} ({start_year}-{end_year}) ===")
+            result = select_decade(
+                name, start_year, end_year,
+                args.films_per_decade, args.candidates_per_decade, args.sitelinks_threshold,
+                args.progress_interval,
+                already_loaded,
+                inserter.insert_batch if inserter else None,
+                args.batch_size,
+            )
+            all_records.extend(result.accepted)
+            all_resumed += len(result.resumed_qids)
+            all_skipped[name] = result.skipped_qids
+            print(
+                f"  {name}: {len(result.accepted)} accepted, {len(result.resumed_qids)} already loaded, "
+                f"{len(result.skipped_qids)} skipped for a missing field"
+            )
+    finally:
+        if cluster is not None:
+            cluster.shutdown()
 
     print(f"\nTotal films built: {len(all_records)}")
+    if all_resumed:
+        print(f"Total kept from an earlier run: {all_resumed}")
     total_skipped = sum(len(v) for v in all_skipped.values())
     if total_skipped:
         print(f"Total skipped for a missing required field (runtime/plot/starring): {total_skipped}")
@@ -471,20 +555,10 @@ def main() -> None:
             print(json.dumps(asdict(all_records[0]), indent=2)[:2000])
         return
 
-    if not all_records:
+    if not all_records and not all_resumed:
         sys.exit("No records built, nothing to load.")
 
-    if cfg["backend"] == "astra":
-        print(f"\nConnecting to Astra keyspace '{cfg['keyspace']}' via {cfg['scb_path'].name}...")
-    else:
-        host_list = ", ".join(f"{h}:{p}" for h, p in cfg["hosts"])
-        print(f"\nConnecting to keyspace '{cfg['keyspace']}' on {host_list}...")
-    cluster, session = connect(cfg, create_keyspace=True)
-    try:
-        load_records(session, all_records)
-    finally:
-        cluster.shutdown()
-
+    inserter.print_summary()
 
 if __name__ == "__main__":
     main()

@@ -14,6 +14,7 @@ Standard library only, with no third-party dependencies.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import re
 import statistics
@@ -51,6 +52,11 @@ PLAUSIBLE_RUNTIME_MINUTES = (40, 400)
 REQUEST_SLEEP_SECONDS = 0.3
 MAX_RETRIES = 3
 
+# Waits between attempts after a connection-level failure (DNS lookup,
+# dropped or reset connection, timeout). Longer than the HTTP error retries
+# above, so a network outage of a few minutes doesn't end a long load.
+NETWORK_RETRY_WAITS_SECONDS = (5, 15, 30, 60, 120)
+
 STARRING_FIELD_RE = re.compile(r"\|\s*starring\s*=(.*?)\n\|", re.S | re.I)
 WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 BULLET_RE = re.compile(r"^\*\s*(.+)$", re.M)
@@ -66,24 +72,42 @@ def _get(url: str, params: dict, accept: str) -> dict:
     query_string = urllib.parse.urlencode(params)
     full_url = f"{url}?{query_string}"
     headers = {"User-Agent": USER_AGENT, "Accept": accept}
-    for attempt in range(1, MAX_RETRIES + 1):
+    http_attempts = 0
+    network_attempts = 0
+    while True:
         req = urllib.request.Request(full_url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=90) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
+            if e.code not in (429, 502, 503, 504):
+                raise
+            http_attempts += 1
             if e.code == 429:
                 wait = int(e.headers.get("Retry-After", "5"))
-                print(f"  [429] rate limited, waiting {wait}s (attempt {attempt})", file=sys.stderr)
-                time.sleep(wait)
-                continue
-            if e.code in (502, 503, 504):
-                wait = 3 * attempt
-                print(f"  [{e.code}] transient error, waiting {wait}s (attempt {attempt})", file=sys.stderr)
-                time.sleep(wait)
-                continue
-            raise
-    raise RuntimeError(f"Gave up after {MAX_RETRIES} attempts: {url}")
+                print(f"  [429] rate limited, waiting {wait}s (attempt {http_attempts})", file=sys.stderr)
+            else:
+                wait = 3 * http_attempts
+                print(f"  [{e.code}] transient error, waiting {wait}s (attempt {http_attempts})", file=sys.stderr)
+            time.sleep(wait)
+            if http_attempts >= MAX_RETRIES:
+                raise RuntimeError(f"Gave up after {MAX_RETRIES} attempts: {url}") from e
+        # HTTPError is a subclass of URLError, so it's caught above first.
+        # URLError wraps errors raised while sending the request (a failed
+        # DNS lookup, for example); errors while reading the response, such
+        # as BrokenPipeError or a timeout, arrive as a plain OSError, and a
+        # truncated response as an http.client.HTTPException.
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+            if network_attempts >= len(NETWORK_RETRY_WAITS_SECONDS):
+                raise
+            wait = NETWORK_RETRY_WAITS_SECONDS[network_attempts]
+            network_attempts += 1
+            print(
+                f"  [network] {type(e).__name__}: {e}, waiting {wait}s (attempt {network_attempts})",
+                file=sys.stderr,
+                flush=True,
+            )
+            time.sleep(wait)
 
 
 def sparql_query(query: str) -> list[dict]:

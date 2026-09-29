@@ -200,13 +200,19 @@ If your bundle has a different name or location, pass its path with
 
 What to expect:
 
-- The loader collects and cleans all the films first, and only connects to
-  Astra once that's done. A missing token is caught immediately,
-  before any of that runs. A wrong token, though, is still
-  only discovered once the loader tries to connect, after the slow part.
-  A full default run (1,000 films, 250 per decade) takes about an hour and a
-  quarter, 1h13m end to end. It queries Wikimedia one
-  request at a time to stay within their limits, so it isn't instant.
+- The loader connects to Astra DB before it collects any films, so a missing
+  or wrong token fails straight away rather than after the slow part. A full
+  default run (1,000 films, 250 per decade) takes about an hour and a quarter,
+  1h13m end to end. It queries Wikimedia one request at a time to stay within
+  their limits, so it isn't instant.
+- It inserts the films in batches of 25 as it goes, and prints a line like
+  `...inserted 25 row(s), 100 this run` after each batch. Change the batch
+  size with `--batch-size`:
+
+  ```bash
+  python tools/loader.py --batch-size 50
+  ```
+
 - It prints a status line every 60 seconds while it's working, so a long run
   doesn't look stalled: elapsed time, how many candidates it's worked through,
   how many films it's accepted, and how many it's skipped. Change how often
@@ -216,8 +222,15 @@ What to expect:
   python tools/loader.py --progress-interval 30
   ```
 
-- It finishes with a line like `all 1000 rows inserted`. If any insert fails it
-  prints the film and the error, and a count of failures.
+- It finishes with a line like `all 1000 rows inserted`, counting the films
+  inserted by that run. If any insert fails it prints the film and the error,
+  and a count of failures.
+- If a run stops partway, for example because your network drops for longer
+  than the few minutes the loader keeps retrying, run the same command again.
+  Films already in the table are kept rather than fetched again, so the loader
+  carries on from where it stopped and ends up with the same films an
+  uninterrupted run would pick. To fetch and insert every film again, pass
+  `--no-resume`.
 - Writing the same film twice overwrites it, because a Cassandra `INSERT` is an
   upsert, so re-running the loader doesn't create duplicates. With the default
   settings it picks the same films every time. If you raise

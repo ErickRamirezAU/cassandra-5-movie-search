@@ -31,7 +31,7 @@ point at. Code lands week by week as the series publishes.
 
 Only capabilities present in Apache Cassandra 5.0. The examples run on Astra DB
 because that keeps the setup out of the way, but Astra is the runtime, not the
-syllabus. Anything taught here also runs on open source Cassandra 5.0.
+syllabus. Anything taught here also runs on Cassandra 5.0.
 
 The series does not cover administration. No keyspace creation, replication
 strategy or node operations. The audience is building an application, not

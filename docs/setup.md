@@ -6,7 +6,7 @@ then come back to whichever week sent you.
 > I'm a Developer Advocate at DataStax, now an IBM company, and I wrote this
 > series as part of that role. It runs on Astra DB, a DataStax product, so the
 > setup stays out of your way. Everything it teaches is an Apache Cassandra® 5.0
-> feature you can also run on open source Cassandra.
+> feature you can also run on Cassandra itself.
 
 ## Prerequisites
 
@@ -268,6 +268,6 @@ are not real audience scores. They're seeded from each film's Wikidata ID, so
 everyone who loads the same film gets the same numbers and the results in each
 post match what you see.
 
-Apache Cassandra, Cassandra, Apache, the Apache logo, and the Apache Cassandra
+*Apache Cassandra, Cassandra, Apache, the Apache logo, and the Apache Cassandra
 project logo are either registered trademarks or trademarks of The Apache
-Software Foundation in the United States and other countries.
+Software Foundation in the United States and other countries.*

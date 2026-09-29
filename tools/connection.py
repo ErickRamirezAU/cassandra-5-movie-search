@@ -109,8 +109,8 @@ def connect(cfg: dict, create_keyspace: bool = False):
 
     # Astra rejects ANY/ONE/LOCAL_ONE for writes outright ("Provided value
     # ONE is not allowed for Write Consistency Level"); LOCAL_QUORUM is a
-    # sane default consistency on any Cassandra cluster, Astra or open
-    # source, so it's used here regardless of backend. Set via an execution
+    # sane default consistency on Astra DB and Cassandra alike, so it's
+    # used here regardless of backend. Set via an execution
     # profile, not session.default_consistency_level, which the driver
     # deprecates in favour of this.
     profile = ExecutionProfile(consistency_level=ConsistencyLevel.LOCAL_QUORUM)

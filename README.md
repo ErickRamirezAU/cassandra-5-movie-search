@@ -23,7 +23,7 @@ point at. Code lands week by week as the series publishes.
 | Path | What it holds |
 | --- | --- |
 | `docs/setup.md` | The reader setup page, linked from every post |
-| `tools/` | The data loader (`loader.py`) and the Wikidata and Wikipedia module it imports. Run from the repo root as `python tools/loader.py` |
+| `tools/` | The data loader (`loader.py`), the Wikidata and Wikipedia module it imports, and `connection.py`, the database connection shared by the loader and the tutorial apps. Run the loader from the repo root as `python tools/loader.py` |
 | `tutorials/week-NN/` | Each week's CQL files and a short README. Weeks land as the series publishes, starting with `tutorials/week-01/` |
 | `.env.example`, `requirements.txt` | Shared by every week. Your own `.env` and the secure connect bundle also live in the repo root |
 

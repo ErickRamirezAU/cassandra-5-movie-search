@@ -20,10 +20,17 @@ filters and wire the result into a small FastAPI endpoint.
 The CQL files are reference copies to paste into the Astra CQL console, one
 statement at a time. They aren't scripts to run as a whole. Neither file
 creates a keyspace. Run `USE default_keyspace;` first, as the post explains.
-`app.py` is a runnable script: install `fastapi` and `uvicorn` from
-[`requirements.txt`](../../requirements.txt), then follow the instructions in
-its docstring. It needs week 1's `movies` table already loaded and this
-week's two indexes already built.
+`app.py` is a runnable script. The virtual environment from the setup page
+already has FastAPI and Uvicorn, installed from
+[`requirements.txt`](../../requirements.txt), so run it from the root of the
+repo:
+
+```bash
+uvicorn app:app --reload --app-dir tutorials/week-02
+```
+
+Then open `http://127.0.0.1:8000/docs` to try the endpoint. It needs week 1's
+`movies` table already loaded and this week's two indexes already built.
 
 The setup page covers the database, token and loader:
 [`docs/setup.md`](../../docs/setup.md).

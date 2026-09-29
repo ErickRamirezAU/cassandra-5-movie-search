@@ -1,75 +1,44 @@
 """Week 2: a small FastAPI search endpoint over the movies table.
 
 Run from the repository root, with the virtual environment from
-docs/setup.md active and fastapi/uvicorn installed:
+docs/setup.md active (requirements.txt already installs fastapi and
+uvicorn):
 
-    pip install fastapi uvicorn
-    uvicorn tutorials.week-02.app:app --reload --app-dir .
+    uvicorn app:app --reload --app-dir tutorials/week-02
 
-If your shell or editor won't import a module with a hyphen in its
-path, run it from inside this directory instead:
-
-    cd tutorials/week-02
-    uvicorn app:app --reload
-
-Reads the same .env file and secure connect bundle as tools/loader.py,
-in the project root: ASTRA_DB_TOKEN, optionally ASTRA_DB_KEYSPACE
-(defaults to Astra's own default_keyspace), and
-secure-connect-cmovies.zip. Requires the movies table from week 1's
+Connects with the same code as tools/loader.py (tools/connection.py), so
+it reads the same .env file in the project root: ASTRA_DB_TOKEN and the
+secure connect bundle for Astra DB, or CASSANDRA_HOSTS for a plain
+Apache Cassandra cluster. Requires the movies table from week 1's
 schema.cql and the two indexes in this week's schema.cql to already
 exist.
 """
 
 from __future__ import annotations
 
-import os
+import re
 import sys
 from pathlib import Path
 from typing import Optional
 
-from cassandra.auth import PlainTextAuthProvider
-from cassandra.cluster import Cluster
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
-DEFAULT_SCB_PATH = PROJECT_DIR / "secure-connect-cmovies.zip"
-DEFAULT_ENV_PATH = PROJECT_DIR / ".env"
+sys.path.insert(0, str(PROJECT_DIR / "tools"))
+
+from connection import build_config, connect  # noqa: E402
+
+# The same rule tools/loader.py uses to fill title_words and actor_words, so
+# a search term splits into exactly the tokens the loader stored.
+TOKEN_STRIP_RE = re.compile(r"[:,.\-–—]")
 
 
-def load_env(path: Path) -> dict:
-    values = dict(os.environ)
-    if path.exists():
-        for line in path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            values.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-    return values
+def tokenise(text: str) -> list[str]:
+    stripped = TOKEN_STRIP_RE.sub("", text)
+    return [t.lower() for t in stripped.split() if t]
 
 
-def connect() -> "Session":  # noqa: F821 - cassandra.cluster.Session
-    env = load_env(DEFAULT_ENV_PATH)
-    token = env.get("ASTRA_DB_TOKEN")
-    if not token:
-        sys.exit(
-            f"ASTRA_DB_TOKEN not set. Checked env file {DEFAULT_ENV_PATH} and "
-            "the current environment, same as tools/loader.py."
-        )
-    if not DEFAULT_SCB_PATH.exists():
-        sys.exit(
-            f"Secure Connect Bundle not found at {DEFAULT_SCB_PATH}. Download "
-            "it from your Astra DB dashboard and save it in the project root."
-        )
-    cluster = Cluster(
-        cloud={"secure_connect_bundle": str(DEFAULT_SCB_PATH)},
-        auth_provider=PlainTextAuthProvider("token", token),
-    )
-    keyspace = env.get("ASTRA_DB_KEYSPACE") or "default_keyspace"
-    return cluster.connect(keyspace)
-
-
-session = connect()
+cluster, session = connect(build_config())
 app = FastAPI()
 
 
@@ -83,12 +52,12 @@ def search_movies(
     rating_min: Optional[float] = None,
 ):
     clauses, params = [], []
-    if title:
+    for word in tokenise(title or ""):
         clauses.append("title_words CONTAINS %s")
-        params.append(title.lower())
-    if actor:
+        params.append(word)
+    for word in tokenise(actor or ""):
         clauses.append("actor_words CONTAINS %s")
-        params.append(actor.lower())
+        params.append(word)
     if genre:
         clauses.append("genres CONTAINS %s")
         params.append(genre.lower())
@@ -103,7 +72,7 @@ def search_movies(
         params.append(rating_min)
 
     if not clauses:
-        return {"error": "at least one filter is required"}
+        raise HTTPException(status_code=400, detail="at least one filter is required")
 
     query = (
         "SELECT title, release_year, cmovie_rating FROM movies WHERE "
@@ -111,4 +80,11 @@ def search_movies(
         + " LIMIT 10"
     )
     rows = session.execute(query, params)
-    return {"results": [row._asdict() for row in rows]}
+    # cmovie_rating is a 32-bit float, so round it back to the loader's one
+    # decimal place rather than returning 4.900000095367432 for 4.9.
+    return {
+        "results": [
+            {**row._asdict(), "cmovie_rating": round(row.cmovie_rating, 1)}
+            for row in rows
+        ]
+    }

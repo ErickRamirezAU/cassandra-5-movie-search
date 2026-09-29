@@ -471,6 +471,11 @@ class MovieInserter:
 
 
 def main() -> None:
+    # Print each line as it happens even when output is redirected to a
+    # file, where Python would otherwise hold it in a buffer, so a log of a
+    # long run can be followed live.
+    sys.stdout.reconfigure(line_buffering=True)
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--films-per-decade", type=int, default=FILMS_PER_DECADE_DEFAULT)
     parser.add_argument("--candidates-per-decade", type=int, default=CANDIDATES_PER_DECADE_DEFAULT)

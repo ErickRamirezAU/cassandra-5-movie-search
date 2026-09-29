@@ -24,8 +24,9 @@ CREATE TABLE IF NOT EXISTS movies (
 );
 
 -- One SAI index per column you want to query. Run these after the loader has
--- finished. Astra builds each index in the background, and a query that uses an
--- index fails with INDEX_BUILD_IN_PROGRESS until its build completes.
+-- finished. Astra DB builds each index in the background, and a query that
+-- uses an index fails with a ReadFailure error (code 1300) until its build
+-- completes.
 
 CREATE CUSTOM INDEX ON movies (release_year) USING 'StorageAttachedIndex';
 CREATE CUSTOM INDEX ON movies (cmovie_rating) USING 'StorageAttachedIndex';

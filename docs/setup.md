@@ -148,7 +148,7 @@ One thing to know before you use it. Google's terms for the free tier say that
 content sent to it is used to provide, improve and develop Google products,
 that human reviewers may read inputs and outputs, and that you shouldn't submit
 sensitive or confidential information to it. This series only ever sends public
-Wikipedia plot text and film titles.
+Wikipedia plot text and the search phrases you type.
 
 ### 3.1 Checking your own rate limits
 

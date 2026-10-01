@@ -5,8 +5,9 @@ Loader for the cassandra-5-movie-search cMovie dataset.
 Selects 1,000 films stratified by decade (250 per decade, configurable),
 resolves each into a full `movies` row using film data from Wikidata and
 plot/cast data from Wikipedia, and loads it into Astra DB or a plain
-Apache Cassandra cluster. Does not generate embeddings or touch a
-`vector<float, 3072>` column.
+Apache Cassandra cluster. Then, as stage 2, fills each row's `wikipedia_url`
+and `plot_embedding` (a `vector<float, 3072>` from Google's
+`gemini-embedding-2`, which needs GEMINI_API_KEY in .env).
 
 Selection and enrichment (the Wikidata/Wikipedia queries and retries) come
 from probe_wikidata_wikipedia.py in this directory. On top of that, this
@@ -35,6 +36,15 @@ script:
 - Resumes by default: a film already in the `movies` table counts as
   accepted without being fetched again, so re-running after a failure picks
   up where the last run stopped. Pass --no-resume to rebuild every film.
+- Stage 2 only touches rows that are missing a value, so it resumes too:
+  re-running after Google's free tier limit stops it carries on with the
+  movies that have no embedding yet. It sends 100 plots per request and
+  waits whenever Google asks it to. Google's free tier counts every plot,
+  not just every request, so a full load of 1,000 movies can use up a whole
+  day's allowance. Use --max-embeddings to cap a run.
+- `--backfill` skips stage 1 and runs stage 2 only, on the movies already in
+  your table, for readers who loaded them in week 1 or 2. Run the week 3
+  `ALTER TABLE` first.
 
 Requires cassandra-driver (PyPI wheels cover CPython 3.10-3.14).
 Run from the repo's root directory, in a virtual environment:
@@ -44,6 +54,10 @@ Run from the repo's root directory, in a virtual environment:
 Drop --dry-run for a real load:
 
     ./.venv/bin/python tools/loader.py --films-per-decade 250
+
+Add the week 3 columns to an existing table, then fill them:
+
+    ./.venv/bin/python tools/loader.py --backfill
 """
 
 from __future__ import annotations
@@ -64,6 +78,12 @@ TOOLS_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = TOOLS_DIR.parent
 sys.path.insert(0, str(TOOLS_DIR))
 
+from embeddings import (  # noqa: E402
+    BATCH_SIZE as EMBED_BATCH_SIZE,
+    DailyLimitReached,
+    EmbeddingError,
+    embed_texts,
+)
 from probe_wikidata_wikipedia import (  # noqa: E402
     DECADES,
     enrich_candidates,
@@ -73,6 +93,7 @@ from probe_wikidata_wikipedia import (  # noqa: E402
     parse_starring_names,
     resolve_release_year,
     resolve_runtime,
+    sparql_query,
     wikipedia_api,
 )
 from connection import (  # noqa: E402
@@ -80,6 +101,7 @@ from connection import (  # noqa: E402
     DEFAULT_SCB_PATH,
     build_config,
     connect,
+    load_env,
 )
 
 FILMS_PER_DECADE_DEFAULT = 250
@@ -87,6 +109,10 @@ CANDIDATES_PER_DECADE_DEFAULT = 400  # default candidate pool size per decade
 SITELINKS_THRESHOLD_DEFAULT = 15
 PROGRESS_INTERVAL_DEFAULT = 60
 BATCH_SIZE_DEFAULT = 25
+SITELINKS_BATCH_SIZE = 200
+# Seconds from the start of one embedding request to the start of the next,
+# so a full load stays near 100 plots a minute.
+EMBED_SECONDS_PER_BATCH = 60
 
 # Deleted outright, not replaced with a space. Includes the en/em dash
 # Wikipedia titles use ("John Wick: Chapter 3 – Parabellum"), not just the
@@ -401,7 +427,9 @@ CREATE TABLE IF NOT EXISTS movies (
     plot text,
     actors list<text>,
     actor_words set<text>,
-    title_words set<text>
+    title_words set<text>,
+    plot_embedding vector<float, 3072>,
+    wikipedia_url text
 )
 """
 
@@ -465,6 +493,99 @@ class MovieInserter:
             print(f"  all {total} rows inserted")
 
 
+
+# ---------------------------------------------------------------------------
+# Stage 2: wikipedia_url and plot_embedding
+# ---------------------------------------------------------------------------
+
+STAGE2_COLUMNS_HELP = (
+    "The movies table doesn't have the week 3 columns yet. In the Astra CQL "
+    "console (or cqlsh), run:\n\n"
+    "    ALTER TABLE movies ADD (plot_embedding vector<float, 3072>, wikipedia_url text);\n\n"
+    "then run this command again."
+)
+
+
+def fetch_wikipedia_urls(qids: list[str]) -> dict[str, str]:
+    """English Wikipedia article URLs for Wikidata IDs, 200 per query."""
+    urls: dict[str, str] = {}
+    for i in range(0, len(qids), SITELINKS_BATCH_SIZE):
+        values = " ".join(f"wd:{qid}" for qid in qids[i : i + SITELINKS_BATCH_SIZE])
+        query = (
+            f"SELECT ?item ?article WHERE {{ VALUES ?item {{ {values} }} "
+            "?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> . }"
+        )
+        for binding in sparql_query(query):
+            urls[binding["item"]["value"].rsplit("/", 1)[1]] = binding["article"]["value"]
+    return urls
+
+
+def run_stage_two(session, api_key: str | None, max_embeddings: int | None) -> None:
+    """Fill wikipedia_url and plot_embedding for every row missing them."""
+    from cassandra import InvalidRequest
+    from cassandra.concurrent import execute_concurrent_with_args
+
+    try:
+        rows = list(session.execute("SELECT movie_id, plot, plot_embedding, wikipedia_url FROM movies"))
+    except InvalidRequest:
+        sys.exit(STAGE2_COLUMNS_HELP)
+
+    print("\n=== Stage 2: wikipedia_url and plot_embedding ===")
+
+    # Wikipedia article URLs. One SPARQL query per 200 movies, no Wikipedia
+    # requests, so this is quick and needs no Gemini key.
+    missing_urls = [r.movie_id for r in rows if not r.wikipedia_url]
+    if missing_urls:
+        print(f"  looking up {len(missing_urls)} Wikipedia article URL(s)...")
+        urls = fetch_wikipedia_urls(missing_urls)
+        update_url = session.prepare("UPDATE movies SET wikipedia_url = ? WHERE movie_id = ?")
+        execute_concurrent_with_args(session, update_url, [(url, qid) for qid, url in urls.items()], concurrency=50)
+        print(f"  {len(urls)} of {len(missing_urls)} URL(s) saved")
+    else:
+        print("  every movie already has a wikipedia_url")
+
+    todo = [r for r in rows if r.plot and r.plot_embedding is None]
+    if not todo:
+        print("  every movie already has a plot_embedding")
+        return
+    if not api_key:
+        print(
+            f"  {len(todo)} movie(s) have no plot_embedding. Set GEMINI_API_KEY in .env and run "
+            "`python tools/loader.py --backfill` to embed them.",
+            file=sys.stderr,
+        )
+        return
+    if max_embeddings is not None:
+        todo = todo[:max_embeddings]
+
+    update_embedding = session.prepare("UPDATE movies SET plot_embedding = ? WHERE movie_id = ?")
+    done = 0
+    print(f"  embedding {len(todo)} plot(s), {EMBED_BATCH_SIZE} per request...")
+    for i in range(0, len(todo), EMBED_BATCH_SIZE):
+        batch = todo[i : i + EMBED_BATCH_SIZE]
+        started = time.monotonic()
+        try:
+            vectors = embed_texts(api_key, [r.plot for r in batch])
+        except DailyLimitReached as e:
+            print(
+                f"\n  Google's free tier limit for today is used up: {e}\n"
+                f"  {done} of {len(todo)} plot(s) were embedded and saved. "
+                "Run the same command again later and it carries on with the rest.",
+                file=sys.stderr,
+            )
+            return
+        except EmbeddingError as e:
+            print(f"\n  {e}\n  {done} plot(s) were embedded and saved. Run the same command again to carry on.", file=sys.stderr)
+            return
+        execute_concurrent_with_args(session, update_embedding, [(v, r.movie_id) for v, r in zip(vectors, batch)], concurrency=20)
+        done += len(batch)
+        print(f"  ...embedded {done}/{len(todo)}", flush=True)
+        remaining = EMBED_SECONDS_PER_BATCH - (time.monotonic() - started)
+        if i + EMBED_BATCH_SIZE < len(todo) and remaining > 0:
+            time.sleep(remaining)
+    print(f"  done: {done} plot(s) embedded")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -487,12 +608,19 @@ def main() -> None:
     parser.add_argument("--env-file", default=str(DEFAULT_ENV_PATH))
     parser.add_argument("--scb", default=None, help=f"Path to the Secure Connect Bundle (default: {DEFAULT_SCB_PATH})")
     parser.add_argument("--keyspace", default=None, help="Override ASTRA_DB_KEYSPACE / CASSANDRA_KEYSPACE")
+    parser.add_argument("--backfill", action="store_true", help="Skip stage 1 and only fill wikipedia_url and plot_embedding for the movies already in your table")
+    parser.add_argument("--no-embeddings", action="store_true", help="Skip stage 2")
+    parser.add_argument("--max-embeddings", type=int, default=None, help="Embed at most this many plots in this run (default: all that are missing)")
     parser.add_argument("--dry-run", action="store_true", help="Select and build records but don't connect to Astra or write anything")
     parser.add_argument("--out-json", default=None, help="Also write the built records to this JSON file")
     args = parser.parse_args()
 
     if args.batch_size < 1:
         parser.error("--batch-size must be at least 1")
+    if args.backfill and (args.dry_run or args.no_embeddings):
+        parser.error("--backfill can't be combined with --dry-run or --no-embeddings")
+    if args.max_embeddings is not None and args.max_embeddings < 1:
+        parser.error("--max-embeddings must be at least 1")
 
     # Connect before the (potentially multi-minute, network-bound) film
     # selection below, so a missing or wrong token or bundle fails straight
@@ -509,6 +637,12 @@ def main() -> None:
             host_list = ", ".join(f"{h}:{p}" for h, p in cfg["hosts"])
             print(f"Connecting to keyspace '{cfg['keyspace']}' on {host_list}...")
         cluster, session = connect(cfg, create_keyspace=True)
+        if args.backfill:
+            try:
+                run_stage_two(session, load_env(Path(args.env_file)).get("GEMINI_API_KEY"), args.max_embeddings)
+            finally:
+                cluster.shutdown()
+            return
         inserter = MovieInserter(session)
         if not args.no_resume:
             already_loaded = inserter.loaded_movie_ids()
@@ -539,9 +673,10 @@ def main() -> None:
                 f"  {name}: {len(result.accepted)} accepted, {len(result.resumed_qids)} already loaded, "
                 f"{len(result.skipped_qids)} skipped for a missing field"
             )
-    finally:
+    except BaseException:
         if cluster is not None:
             cluster.shutdown()
+        raise
 
     print(f"\nTotal films built: {len(all_records)}")
     if all_resumed:
@@ -560,10 +695,16 @@ def main() -> None:
             print(json.dumps(asdict(all_records[0]), indent=2)[:2000])
         return
 
-    if not all_records and not all_resumed:
-        sys.exit("No records built, nothing to load.")
+    try:
+        if not all_records and not all_resumed:
+            sys.exit("No records built, nothing to load.")
 
-    inserter.print_summary()
+        inserter.print_summary()
+
+        if not args.no_embeddings:
+            run_stage_two(session, load_env(Path(args.env_file)).get("GEMINI_API_KEY"), args.max_embeddings)
+    finally:
+        cluster.shutdown()
 
 if __name__ == "__main__":
     main()

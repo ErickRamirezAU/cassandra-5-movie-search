@@ -153,8 +153,16 @@ Wikipedia plot text and the search phrases you type.
 ### 3.1 Checking your own rate limits
 
 Free tier limits change and Google no longer publishes a table of them, so this
-series doesn't quote numbers. Check your own limits in Google AI Studio, and
-expect them to differ from anyone else's.
+series doesn't quote numbers. Check your own limits on the Rate Limit page in
+Google AI Studio (Usage & Billing, then Rate Limit), and expect them to differ
+from anyone else's.
+
+What matters is how the free tier counts. It counts every plot the loader
+sends, not just every request, so sending plots in batches of 100 saves round
+trips but doesn't stretch your allowance. A full load of 1,000 movies can use up
+a day's allowance. The loader waits whenever Google asks it to, and it skips
+movies that already have an embedding, so if it stops you can run it again
+later and it carries on.
 
 ## 4. Environment variables
 
@@ -184,8 +192,8 @@ The loader pulls 1,000 films from [Wikidata](https://www.wikidata.org) and
 [Wikipedia](https://en.wikipedia.org), generates the three
 `cmovie_` columns, and writes everything to a `movies` table in
 `default_keyspace`.
-The same loader serves all ten posts, so you only do this once. Week 3 adds the
-embedding step.
+The same loader serves all ten posts, so you only do this once. From week 3 it
+also embeds each plot and saves each movie's Wikipedia article URL.
 
 Run the loader from the repo's root directory, where you saved the bundle and
 created `.env`. It reads your token from `.env` and looks for
@@ -205,6 +213,11 @@ What to expect:
   default run (1,000 films, 250 per decade) takes about an hour and a quarter,
   1h13m end to end. It queries Wikimedia one request at a time to stay within
   their limits, so it isn't instant.
+- Once the films are inserted, a second stage saves each movie's Wikipedia
+  article URL and embeds each plot with Gemini, 100 plots per request, if
+  `GEMINI_API_KEY` is set. See [section 3.1](#31-checking-your-own-rate-limits)
+  for how the free tier counts. Pass `--no-embeddings` to skip it, or
+  `--max-embeddings 300` to cap how many plots one run sends.
 - It inserts the films in batches of 25 as it goes, and prints a line like
   `...inserted 25 row(s), 100 this run` after each batch. Change the batch
   size with `--batch-size`:
@@ -254,7 +267,26 @@ SELECT movie_id, title, release_year FROM movies LIMIT 5;
 
 You should see five films, each keyed by its Wikidata ID such as `Q25188`.
 
-### 5.2 Where the data comes from
+### 5.2 If you loaded the movies in week 1 or 2
+
+Your table doesn't have the `plot_embedding` and `wikipedia_url` columns yet.
+Add them in the CQL console:
+
+```sql
+ALTER TABLE movies ADD (plot_embedding vector<float, 3072>, wikipedia_url text);
+```
+
+Then fill them from the repo's root directory. This reads the movies already in
+your table, so it doesn't pick a new set:
+
+```bash
+python tools/loader.py --backfill
+```
+
+If it stops, for example because the free tier limit is used up, run the same
+command again later. It skips the movies that already have the values.
+
+### 5.3 Where the data comes from
 
 | Data | Source | Licence |
 | --- | --- | --- |

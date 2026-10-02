@@ -526,7 +526,9 @@ def run_stage_two(session, api_key: str | None, max_embeddings: int | None) -> N
     from cassandra.concurrent import execute_concurrent_with_args
 
     try:
-        rows = list(session.execute("SELECT movie_id, plot, plot_embedding, wikipedia_url FROM movies"))
+        # The default 10 second client timeout is too short once most rows hold
+        # a 3,072 float vector (about 12 KB each), so give the full scan longer.
+        rows = list(session.execute("SELECT movie_id, plot, plot_embedding, wikipedia_url FROM movies", timeout=120))
     except InvalidRequest:
         sys.exit(STAGE2_COLUMNS_HELP)
 

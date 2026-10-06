@@ -26,6 +26,7 @@ Code lands week by week as the series publishes. These weeks are out so far:
 | --- | --- | --- |
 | 1 | [Query any column, not just the primary key: a SQL developer's guide to Cassandra SAI](https://8567.me/posts/c5-cmovie-wk01-sai-overview/) | [`tutorials/week-01/`](tutorials/week-01/) |
 | 2 | [Not every search needs Elasticsearch: build a Python FastAPI filter and keyword search on Cassandra](https://8567.me/posts/c5-cmovie-wk02-keyword-search/) | [`tutorials/week-02/`](tutorials/week-02/) |
+| 3 | [Skip the separate vector database: vector search in the same Cassandra table as your data](https://8567.me/posts/c5-cmovie-wk03-vector-search/) | [`tutorials/week-03/`](tutorials/week-03/) |
 
 ## Repository layout
 

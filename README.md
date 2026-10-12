@@ -27,6 +27,7 @@ Code lands week by week as the series publishes. These weeks are out so far:
 | 1 | [Query any column, not just the primary key: a SQL developer's guide to Cassandra SAI](https://8567.me/posts/c5-cmovie-wk01-sai-overview/) | [`tutorials/week-01/`](tutorials/week-01/) |
 | 2 | [Not every search needs Elasticsearch: build a Python FastAPI filter and keyword search on Cassandra](https://8567.me/posts/c5-cmovie-wk02-keyword-search/) | [`tutorials/week-02/`](tutorials/week-02/) |
 | 3 | [Skip the separate vector database: vector search in the same Cassandra table as your data](https://8567.me/posts/c5-cmovie-wk03-vector-search/) | [`tutorials/week-03/`](tutorials/week-03/) |
+| 4 | [Vibe search, not keywords: build semantic search with Python and Cassandra](https://8567.me/posts/c5-cmovie-wk04-semantic-search/) | [`tutorials/week-04/`](tutorials/week-04/), [`app/main.py`](app/main.py) |
 
 ## Repository layout
 
@@ -34,7 +35,8 @@ Code lands week by week as the series publishes. These weeks are out so far:
 | --- | --- |
 | `docs/setup.md` | The reader setup page, linked from every post |
 | `tools/` | The data loader (`loader.py`), the Wikidata and Wikipedia module it imports, and `connection.py`, the database connection shared by the loader and the tutorial apps. Run the loader from the repo root as `python tools/loader.py` |
-| `tutorials/week-NN/` | Each week's CQL files and a short README, plus the week's application code from week 2 (`app.py`) |
+| `tutorials/week-NN/` | Each week's CQL files and a short README. Week 2 also has its own `app.py`, kept so the week 2 post still works |
+| `app/` | The cMovie API from week 4 on, in `main.py`: week 2's keyword search plus each later build week's endpoint. Run it from the repo root with `uvicorn app.main:app --reload` |
 | `.env.example`, `requirements.txt` | Shared by every week. `requirements.txt` covers the loader and the tutorial apps. Your own `.env` and the secure connect bundle also live in the repo root |
 
 ## What the series teaches

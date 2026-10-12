@@ -11,6 +11,10 @@ just the request, so batching saves round trips but doesn't stretch your
 allowance. When Google answers HTTP 429, embed_texts() waits for the delay it
 asks for and tries again. If the answer says the daily limit is used up, it
 raises DailyLimitReached, so the caller can stop and keep what it has.
+
+A web app can't sit waiting for Google, so embed_texts(..., retry=False) skips
+all the waiting: a 429 raises RateLimited straight away, with the delay Google
+asked for, and any other failure raises EmbeddingError.
 """
 
 from __future__ import annotations
@@ -41,6 +45,14 @@ class EmbeddingError(RuntimeError):
     """Any other failure from the Gemini API."""
 
 
+class RateLimited(RuntimeError):
+    """Google answered 429 and the caller asked not to wait (retry=False)."""
+
+    def __init__(self, retry_after: float):
+        super().__init__(f"Gemini asked us to wait {retry_after:.0f}s")
+        self.retry_after = retry_after
+
+
 def _retry_seconds(error_body: dict) -> float | None:
     for detail in error_body.get("error", {}).get("details", []):
         delay = detail.get("retryDelay")
@@ -58,8 +70,12 @@ def _is_daily_limit(error_body: dict) -> bool:
     return False
 
 
-def embed_texts(api_key: str, texts: list[str]) -> list[list[float]]:
-    """Embed texts in one batch request and return one vector per text."""
+def embed_texts(api_key: str, texts: list[str], retry: bool = True) -> list[list[float]]:
+    """Embed texts in one batch request and return one vector per text.
+
+    With retry=False, nothing sleeps: a 429 raises RateLimited and a transient
+    or network error raises EmbeddingError on the first attempt.
+    """
     body = json.dumps(
         {
             "requests": [
@@ -92,11 +108,15 @@ def embed_texts(api_key: str, texts: list[str]) -> list[list[float]]:
             if e.code == 429:
                 if _is_daily_limit(error_body):
                     raise DailyLimitReached(error_body["error"]["message"].splitlines()[0]) from e
+                if not retry:
+                    raise RateLimited(_retry_seconds(error_body) or DEFAULT_RETRY_SECONDS) from e
                 wait = (_retry_seconds(error_body) or DEFAULT_RETRY_SECONDS) + 1
                 print(f"  [429] Gemini asked us to wait, retrying in {wait:.0f}s (attempt {attempt})", file=sys.stderr, flush=True)
                 time.sleep(wait)
                 continue
             if e.code in (500, 502, 503, 504):
+                if not retry:
+                    raise EmbeddingError(f"Gemini returned HTTP {e.code}") from e
                 wait = 5 * attempt
                 print(f"  [{e.code}] Gemini transient error, retrying in {wait}s (attempt {attempt})", file=sys.stderr, flush=True)
                 time.sleep(wait)
@@ -104,6 +124,8 @@ def embed_texts(api_key: str, texts: list[str]) -> list[list[float]]:
             message = error_body.get("error", {}).get("message", raw[:300])
             raise EmbeddingError(f"Gemini returned HTTP {e.code}: {message}") from e
         except (urllib.error.URLError, OSError) as e:
+            if not retry:
+                raise EmbeddingError(f"Couldn't reach Gemini: {e}") from e
             wait = 5 * attempt
             print(f"  [network] {type(e).__name__}: {e}, retrying in {wait}s (attempt {attempt})", file=sys.stderr, flush=True)
             time.sleep(wait)

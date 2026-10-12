@@ -1,8 +1,10 @@
 # Week 3: vector search in the same table as your data
 
-Companion files for the week 3 post of the cMovie series on
-[8567.me](https://8567.me). The series teaches Apache Cassandra® 5.0 features by
-building movie search for a fictional app called cMovie, running on Astra DB.
+Companion files for the
+[week 3 post](https://8567.me/posts/c5-cmovie-wk03-vector-search/) of the
+cMovie series on [8567.me](https://8567.me). The series teaches Apache
+Cassandra® 5.0 features by building movie search for a fictional app called
+cMovie, running on Astra DB.
 
 This week you add a `plot_embedding` column of type `vector<float, 3072>` to
 the `movies` table, index it with a Storage Attached Index and search it with

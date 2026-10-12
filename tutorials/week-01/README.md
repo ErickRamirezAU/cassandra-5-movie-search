@@ -1,8 +1,10 @@
 # Week 1: Find films by genre, year and rating with SAI
 
-Companion files for the week 1 post of the cMovie series on
-[8567.me](https://8567.me). The series teaches Apache Cassandra® 5.0 features by
-building movie search for a fictional app called cMovie, running on Astra DB.
+Companion files for the
+[week 1 post](https://8567.me/posts/c5-cmovie-wk01-sai-overview/) of the
+cMovie series on [8567.me](https://8567.me). The series teaches Apache
+Cassandra® 5.0 features by building movie search for a fictional app called
+cMovie, running on Astra DB.
 
 This week you create the `movies` table, load 1,000 films with the loader in
 [`tools/`](../../tools), add Storage Attached Indexes (SAI) and query the table

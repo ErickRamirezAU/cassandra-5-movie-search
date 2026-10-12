@@ -1,8 +1,10 @@
 # Week 4: semantic search with Python and Cassandra
 
-Companion files for the week 4 post of the cMovie series on
-[8567.me](https://8567.me). The series teaches Apache Cassandra® 5.0 features by
-building movie search for a fictional app called cMovie, running on Astra DB.
+Companion files for the
+[week 4 post](https://8567.me/posts/c5-cmovie-wk04-semantic-search/) of the
+cMovie series on [8567.me](https://8567.me). The series teaches Apache
+Cassandra® 5.0 features by building movie search for a fictional app called
+cMovie, running on Astra DB.
 
 This week you add a `GET /movies/semantic` endpoint to the cMovie API. It embeds
 the reader's phrase with Gemini at request time, then asks Cassandra for the

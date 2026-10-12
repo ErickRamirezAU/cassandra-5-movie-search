@@ -1,8 +1,10 @@
 # Week 2: fragment search with SAI and a small FastAPI app
 
-Companion files for the week 2 post of the cMovie series on
-[8567.me](https://8567.me). The series teaches Apache Cassandra® 5.0 features by
-building movie search for a fictional app called cMovie, running on Astra DB.
+Companion files for the
+[week 2 post](https://8567.me/posts/c5-cmovie-wk02-keyword-search/) of the
+cMovie series on [8567.me](https://8567.me). The series teaches Apache
+Cassandra® 5.0 features by building movie search for a fictional app called
+cMovie, running on Astra DB.
 
 This week you index `title_words` and `actor_words`, two `set<text>` columns
 the loader has been filling since week 1, so a reader can search for a word

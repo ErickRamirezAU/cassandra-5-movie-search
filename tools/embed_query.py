@@ -12,6 +12,15 @@ repo's root directory, in your virtual environment:
 
     ./.venv/bin/python tools/embed_query.py "a retired hitman is pulled back in"
 
+To narrow the search with ordinary filters, add --where. The filter goes
+before ORDER BY, and it can only use columns that have an SAI index:
+
+    ./.venv/bin/python tools/embed_query.py "a retired hitman is pulled back in" \\
+        --where "genres CONTAINS 'crime'"
+
+To see more columns in the results, add --columns, for example
+--columns "title, release_year, genres".
+
 Each run sends one phrase to Gemini, which counts as one text against your
 free tier allowance.
 """
@@ -33,6 +42,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("phrase", help="What the movie is about, in your own words")
     parser.add_argument("--limit", type=int, default=5, help="How many movies to ask for (default: 5)")
+    parser.add_argument("--where", help="Filter to apply before the vector ordering, such as \"genres CONTAINS 'crime'\"")
+    parser.add_argument("--columns", default="title, release_year", help="Columns to select (default: title, release_year)")
     parser.add_argument("--env-file", default=str(DEFAULT_ENV_PATH))
     args = parser.parse_args()
 
@@ -50,9 +61,10 @@ def main() -> None:
     except EmbeddingError as e:
         sys.exit(str(e))
 
+    where = f"WHERE {args.where} " if args.where else ""
     print(
-        "SELECT title, release_year FROM movies "
-        f"ORDER BY plot_embedding ANN OF {vector_literal(vector)} LIMIT {args.limit};"
+        f"SELECT {args.columns} FROM movies "
+        f"{where}ORDER BY plot_embedding ANN OF {vector_literal(vector)} LIMIT {args.limit};"
     )
 
 

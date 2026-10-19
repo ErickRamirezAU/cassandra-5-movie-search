@@ -28,6 +28,7 @@ Code lands week by week as the series publishes. These weeks are out so far:
 | 2 | [Not every search needs Elasticsearch: build a Python FastAPI filter and keyword search on Cassandra](https://8567.me/posts/c5-cmovie-wk02-keyword-search/) | [`tutorials/week-02/`](tutorials/week-02/) |
 | 3 | [Skip the separate vector database: vector search in the same Cassandra table as your data](https://8567.me/posts/c5-cmovie-wk03-vector-search/) | [`tutorials/week-03/`](tutorials/week-03/) |
 | 4 | [Vibe search, not keywords: build semantic search with Python and Cassandra](https://8567.me/posts/c5-cmovie-wk04-semantic-search/) | [`tutorials/week-04/`](tutorials/week-04/), [`app/main.py`](app/main.py) |
+| 5 | [Why pure vector search returns the wrong movies: filtered ANN with SAI in Cassandra](https://8567.me/posts/c5-cmovie-wk05-filtered-vector-search/) | [`tutorials/week-05/`](tutorials/week-05/) |
 
 ## Repository layout
 

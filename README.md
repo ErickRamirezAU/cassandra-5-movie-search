@@ -29,6 +29,7 @@ Code lands week by week as the series publishes. These weeks are out so far:
 | 3 | [Skip the separate vector database: vector search in the same Cassandra table as your data](https://8567.me/posts/c5-cmovie-wk03-vector-search/) | [`tutorials/week-03/`](tutorials/week-03/) |
 | 4 | [Vibe search, not keywords: build semantic search with Python and Cassandra](https://8567.me/posts/c5-cmovie-wk04-semantic-search/) | [`tutorials/week-04/`](tutorials/week-04/), [`app/main.py`](app/main.py) |
 | 5 | [Why pure vector search returns the wrong movies: filtered ANN with SAI in Cassandra](https://8567.me/posts/c5-cmovie-wk05-filtered-vector-search/) | [`tutorials/week-05/`](tutorials/week-05/) |
+| 6 | [What should I watch tonight? Build a RAG movie assistant with Python and Cassandra](https://8567.me/posts/c5-cmovie-wk06-rag-movie-assistant/) | [`tutorials/week-06/`](tutorials/week-06/), [`app/main.py`](app/main.py), [`tools/llm.py`](tools/llm.py) |
 
 ## Repository layout
 

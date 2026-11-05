@@ -21,6 +21,11 @@ before ORDER BY, and it can only use columns that have an SAI index:
 To see more columns in the results, add --columns, for example
 --columns "title, release_year, genres".
 
+To see how close each result is, add --scores. It adds a column for each of
+Cassandra's three similarity functions (similarity_cosine,
+similarity_euclidean and similarity_dot_product), so the statement carries the
+vector four times and is long. Paste it as it is.
+
 Each run sends one phrase to Gemini, which counts as one text against your
 free tier allowance.
 """
@@ -44,6 +49,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=5, help="How many movies to ask for (default: 5)")
     parser.add_argument("--where", help="Filter to apply before the vector ordering, such as \"genres CONTAINS 'crime'\"")
     parser.add_argument("--columns", default="title, release_year", help="Columns to select (default: title, release_year)")
+    parser.add_argument("--scores", action="store_true", help="Also select the three similarity scores for each movie")
     parser.add_argument("--env-file", default=str(DEFAULT_ENV_PATH))
     args = parser.parse_args()
 
@@ -61,10 +67,18 @@ def main() -> None:
     except EmbeddingError as e:
         sys.exit(str(e))
 
+    literal = vector_literal(vector)
+    columns = args.columns
+    if args.scores:
+        columns += ", " + ", ".join(
+            f"{fn}(plot_embedding, {literal}) AS {fn.removeprefix('similarity_')}"
+            for fn in ("similarity_cosine", "similarity_euclidean", "similarity_dot_product")
+        )
+
     where = f"WHERE {args.where} " if args.where else ""
     print(
-        f"SELECT {args.columns} FROM movies "
-        f"{where}ORDER BY plot_embedding ANN OF {vector_literal(vector)} LIMIT {args.limit};"
+        f"SELECT {columns} FROM movies "
+        f"{where}ORDER BY plot_embedding ANN OF {literal} LIMIT {args.limit};"
     )
 
 

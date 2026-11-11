@@ -222,3 +222,6 @@ secure-connect-*.zip
 
 # macOS Finder metadata
 .DS_Store
+
+# Node
+node_modules/

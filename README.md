@@ -32,6 +32,7 @@ Code lands week by week as the series publishes. These weeks are out so far:
 | 6 | [What should I watch tonight? Build a RAG movie assistant with Python and Cassandra](https://8567.me/posts/c5-cmovie-wk06-rag-movie-assistant/) | [`tutorials/week-06/`](tutorials/week-06/), [`app/main.py`](app/main.py), [`tools/llm.py`](tools/llm.py) |
 | 7 | [Cosine, Euclidean or dot product? Vector similarity functions in Cassandra](https://8567.me/posts/c5-cmovie-wk07-similarity-functions/) | [`tutorials/week-07/`](tutorials/week-07/), [`tools/embed_query.py`](tools/embed_query.py) |
 | 8 | [CQL can't filter on similarity: build "more like this" recommendations with TypeScript and Cassandra](https://8567.me/posts/c5-cmovie-wk08-more-like-this/) | [`tutorials/week-08/`](tutorials/week-08/), [`app-ts/`](app-ts/) |
+| 9 | [Same CQL, different fine print: SAI and vector search in Cassandra 5.0 vs Astra DB](https://8567.me/posts/c5-cmovie-wk09-cassandra-vs-astra-db/) | |
 
 ## Repository layout
 
